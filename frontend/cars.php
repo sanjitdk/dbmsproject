@@ -1,12 +1,10 @@
 <?php 
 require_once '../backend/connection.php';
 
-// Get all available vehicles
-// Get ALL vehicles (removed availability filter)
-$query = "SELECT VehicleID, Make, Model, Year, Color, LicensePlate, RentalPricePerDay FROM vehicle";
+// Use the correct column name: AvailabilityStatus
+$query = "SELECT VehicleID, Make, Model, LicensePlate, RentalPricePerDay, AvailabilityStatus FROM vehicle";
 $result = $conn->query($query);
 
-// Check if query was successful
 if (!$result) {
     die("Database query failed: " . $conn->error);
 }
@@ -14,11 +12,11 @@ if (!$result) {
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Our Fleet | CarRentalPro</title>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
   <style>
     .card-container {
       display: grid;
@@ -42,7 +40,7 @@ if (!$result) {
       width: 100%;
       height: 200px;
       object-fit: cover;
-      background: #f5f5f5; /* Placeholder color if no image */
+      background: #f5f5f5;
     }
     .card-content {
       padding: 1.5rem;
@@ -70,6 +68,11 @@ if (!$result) {
     .btn:hover {
       background: #2980b9;
     }
+    .btn.disabled {
+      background: #bdc3c7;
+      pointer-events: none;
+      cursor: not-allowed;
+    }
     .no-vehicles {
       text-align: center;
       grid-column: 1/-1;
@@ -85,7 +88,6 @@ if (!$result) {
       <a href="index.php">Home</a>
       <a href="cars.php">All Vehicles</a>
       <a href="book.php">Book</a>
-      <a href="contact.php">Contact</a>
     </nav>
   </header>
 
@@ -95,18 +97,24 @@ if (!$result) {
     <div class="card-container">
       <?php if ($result->num_rows > 0): ?>
         <?php while($vehicle = $result->fetch_assoc()): ?>
+          <?php $available = $vehicle['AvailabilityStatus'] == 1; ?>
           <div class="card">
-            <!-- Image placeholder - add your image implementation here -->
             <img src="../assets/images/vehicles/<?php echo strtolower($vehicle['Make'].'-'.$vehicle['Model'].'.jpg'); ?>" 
                  alt="<?php echo htmlspecialchars($vehicle['Make'] . ' ' . $vehicle['Model']); ?>"
                  onerror="this.src='../assets/images/default-car.jpg'">
             <div class="card-content">
               <h3><?php echo htmlspecialchars($vehicle['Make'] . ' ' . $vehicle['Model']); ?></h3>
-              <p><strong>Year:</strong> <?php echo htmlspecialchars($vehicle['Year']); ?></p>
-              <p><strong>Color:</strong> <?php echo htmlspecialchars($vehicle['Color']); ?></p>
+              <p><strong>Availability:</strong> 
+                <span style="color: <?php echo $available ? 'green' : 'red'; ?>">
+                  <?php echo $available ? 'Available' : 'Unavailable'; ?>
+                </span>
+              </p>
               <p><strong>Price/Day:</strong> $<?php echo number_format($vehicle['RentalPricePerDay'], 2); ?></p>
               <p><strong>License:</strong> <?php echo htmlspecialchars($vehicle['LicensePlate'] ?? 'N/A'); ?></p>
-              <a href="book.php?car_id=<?php echo $vehicle['VehicleID']; ?>" class="btn">Book Now</a>
+              <a href="<?php echo $available ? 'book.php?car_id=' . $vehicle['VehicleID'] : '#'; ?>" 
+                 class="btn <?php echo $available ? '' : 'disabled'; ?>">
+                 <?php echo $available ? 'Book Now' : 'Unavailable'; ?>
+              </a>
             </div>
           </div>
         <?php endwhile; ?>

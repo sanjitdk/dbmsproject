@@ -2,100 +2,160 @@
 session_start();
 require_once 'connection.php';
 
-// Redirect if not logged in
-if (!isset($_SESSION['admin_logged_in'])) {
-    header("Location: admin_login.php");
+// Check admin login
+if (!isset($_SESSION['username']) || $_SESSION['role'] !== 'Admin') {
+    header("Location: ../frontend/login.php");
     exit();
 }
 
-// Handle booking deletion
-if (isset($_GET['delete'])) {
-    $id = (int)$_GET['delete'];
-    $booking = $conn->query("SELECT car_id FROM bookings WHERE id = $id")->fetch_assoc();
-    $conn->query("DELETE FROM bookings WHERE id = $id");
-    // Make car available again
-    $conn->query("UPDATE cars SET available = 1 WHERE id = {$booking['car_id']}");
+// FIXED: Cancel booking logic — Delete payment first
+if (isset($_GET['cancel'])) {
+    $cancelId = (int)$_GET['cancel'];
+
+    // Delete from payment table first
+    $conn->query("DELETE FROM payment WHERE BookingID = $cancelId");
+
+    // Then delete from booking table
+    $conn->query("DELETE FROM booking WHERE BookingID = $cancelId");
+
+    // Redirect after deletion
     header("Location: manage_bookings.php");
     exit();
 }
 
-// Get all bookings with car details
-$bookings = $conn->query("
-    SELECT b.*, c.make, c.model 
-    FROM bookings b
-    JOIN cars c ON b.car_id = c.id
-    ORDER BY b.pickup_date DESC
-");
+// Fetch booking details with customer info
+$sql = "
+    SELECT 
+        b.BookingID, b.VehicleID, b.StartDate, b.EndDate, b.TotalCost, b.BookingStatus,
+        c.Name AS CustomerName, c.Email, c.Phone
+    FROM booking b
+    JOIN customer c ON b.CustomerID = c.CustomerID
+    ORDER BY b.StartDate DESC
+";
+
+$result = $conn->query($sql);
 ?>
+
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Manage Bookings</title>
+    <title>Manage Bookings - Admin</title>
     <link rel="stylesheet" href="../frontend/style.css">
     <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background: #f1f5f9;
+            margin: 0;
+            padding: 20px;
+        }
+
+        h1 {
+            color: #1e3a8a;
+        }
+
+        .top-buttons {
+            margin-bottom: 20px;
+        }
+
+        .top-buttons a {
+            display: inline-block;
+            margin-right: 10px;
+            padding: 10px 15px;
+            background-color: #1e3a8a;
+            color: white;
+            border-radius: 5px;
+            text-decoration: none;
+            font-weight: bold;
+        }
+
+        .top-buttons a:hover {
+            background-color: #3749ad;
+        }
+
         table {
             width: 100%;
             border-collapse: collapse;
-            margin-top: 20px;
+            background: white;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
         }
+
         th, td {
-            padding: 12px;
-            border: 1px solid #ddd;
-            text-align: left;
+            padding: 10px;
+            text-align: center;
+            border: 1px solid #e2e8f0;
         }
+
         th {
-            background: #f2f2f2;
+            background: #1e3a8a;
+            color: white;
         }
-        tr:nth-child(even) {
-            background: #f9f9f9;
+
+        a.button {
+            padding: 6px 12px;
+            text-decoration: none;
+            color: white;
+            border-radius: 5px;
+            font-weight: bold;
         }
-        .actions a {
-            margin-right: 10px;
+
+        .edit-btn {
+            background: #3b82f6;
+        }
+
+        .edit-btn:hover {
+            background: #2563eb;
+        }
+
+        .cancel-btn {
+            background: #ef4444;
+        }
+
+        .cancel-btn:hover {
+            background: #dc2626;
         }
     </style>
 </head>
 <body>
-    <header>
-        <nav>
-            <a href="../frontend/index.php">View Site</a>
-            <a href="admin_dashboard.php">Dashboard</a>
-            <a href="logout.php">Logout</a>
-        </nav>
-    </header>
 
-    <main>
-        <h1>Manage Bookings</h1>
-        
-        <table>
-            <tr>
-                <th>Booking ID</th>
-                <th>Customer</th>
-                <th>Car</th>
-                <th>Pickup Date</th>
-                <th>Return Date</th>
-                <th>Booking Date</th>
-                <th>Actions</th>
-            </tr>
-            <?php while($booking = $bookings->fetch_assoc()): ?>
-            <tr>
-                <td><?php echo $booking['id']; ?></td>
-                <td>
-                    <?php echo $booking['customer_name']; ?><br>
-                    <?php echo $booking['customer_email']; ?><br>
-                    <?php echo $booking['customer_phone']; ?>
-                </td>
-                <td><?php echo $booking['make'].' '.$booking['model']; ?></td>
-                <td><?php echo date('M j, Y', strtotime($booking['pickup_date'])); ?></td>
-                <td><?php echo date('M j, Y', strtotime($booking['return_date'])); ?></td>
-                <td><?php echo date('M j, Y H:i', strtotime($booking['booking_date'])); ?></td>
-                <td class="actions">
-                    <a href="mailto:<?php echo $booking['customer_email']; ?>" class="button">Email</a>
-                    <a href="manage_bookings.php?delete=<?php echo $booking['id']; ?>" class="button secondary" 
-                       onclick="return confirm('Are you sure you want to delete this booking?')">Delete</a>
-                </td>
-            </tr>
-            <?php endwhile; ?>
-        </table>
-    </main>
+    <h1>Manage Bookings</h1>
+
+    <div class="top-buttons">
+        <a href="admin_dashboard.php">← Back to Dashboard</a>
+        <a href="logout.php">Logout</a>
+    </div>
+
+    <table>
+        <tr>
+            <th>Booking ID</th>
+            <th>Customer Name</th>
+            <th>Email</th>
+            <th>Phone</th>
+            <th>Vehicle ID</th>
+            <th>Start Date</th>
+            <th>End Date</th>
+            <th>Total Cost</th>
+            <th>Status</th>
+            <th>Actions</th>
+        </tr>
+
+        <?php while ($row = $result->fetch_assoc()) { ?>
+        <tr>
+            <td><?= $row['BookingID']; ?></td>
+            <td><?= htmlspecialchars($row['CustomerName']); ?></td>
+            <td><?= htmlspecialchars($row['Email']); ?></td>
+            <td><?= htmlspecialchars($row['Phone']); ?></td>
+            <td><?= $row['VehicleID']; ?></td>
+            <td><?= $row['StartDate']; ?></td>
+            <td><?= $row['EndDate']; ?></td>
+            <td>$<?= $row['TotalCost']; ?></td>
+            <td><?= $row['BookingStatus']; ?></td>
+            <td>
+                <a class="button edit-btn" href="edit_booking.php?id=<?= $row['BookingID']; ?>">Edit</a>
+                <a class="button cancel-btn" href="manage_bookings.php?cancel=<?= $row['BookingID']; ?>" onclick="return confirm('Are you sure you want to cancel this booking?');">Cancel</a>
+            </td>
+        </tr>
+        <?php } ?>
+    </table>
+
 </body>
 </html>

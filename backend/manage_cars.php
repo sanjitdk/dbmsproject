@@ -2,163 +2,258 @@
 session_start();
 require_once 'connection.php';
 
-// Redirect if not logged in
-if (!isset($_SESSION['admin_logged_in'])) {
-    header("Location: admin_login.php");
+if (!isset($_SESSION['username']) || $_SESSION['role'] !== 'Admin') {
+    header("Location: ../frontend/login.php");
     exit();
 }
 
-// Handle car deletion
 if (isset($_GET['delete'])) {
     $id = (int)$_GET['delete'];
-    $conn->query("DELETE FROM cars WHERE id = $id");
+    $conn->query("DELETE FROM vehicle WHERE VehicleID = $id");
     header("Location: manage_cars.php");
     exit();
 }
 
-// Handle form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $make = $conn->real_escape_string($_POST['make']);
     $model = $conn->real_escape_string($_POST['model']);
     $year = (int)$_POST['year'];
+    $color = $conn->real_escape_string($_POST['color']);
+    $plate = $conn->real_escape_string($_POST['license']);
+    $availability = isset($_POST['availability']) ? 1 : 0;
     $price = (float)$_POST['price'];
-    $available = isset($_POST['available']) ? 1 : 0;
-    $image = $conn->real_escape_string($_POST['image']);
 
-    if (isset($_POST['car_id'])) { // Update existing
-        $id = (int)$_POST['car_id'];
-        $conn->query("UPDATE cars SET 
-            make='$make', model='$model', year=$year, 
-            price_per_day=$price, available=$available, image='$image'
-            WHERE id=$id");
-    } else { // Insert new
-        $conn->query("INSERT INTO cars (make, model, year, price_per_day, available, image)
-            VALUES ('$make', '$model', $year, $price, $available, '$image')");
+    if (isset($_POST['vehicle_id'])) {
+        $id = (int)$_POST['vehicle_id'];
+        $conn->query("UPDATE vehicle SET 
+            Make='$make', Model='$model', Year=$year, Color='$color',
+            LicensePlate='$plate', AvailabilityStatus=$availability,
+            RentalPricePerDay=$price
+            WHERE VehicleID=$id");
+    } else {
+        $conn->query("INSERT INTO vehicle 
+            (Make, Model, Year, Color, LicensePlate, AvailabilityStatus, RentalPricePerDay) 
+            VALUES ('$make', '$model', $year, '$color', '$plate', $availability, $price)");
     }
     header("Location: manage_cars.php");
     exit();
 }
 
-// Get all cars
-$cars = $conn->query("SELECT * FROM cars ORDER BY make, model");
+$vehicles = $conn->query("SELECT * FROM vehicle ORDER BY Make, Model");
 ?>
+
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Manage Cars</title>
+    <title>Manage Vehicles - CarRentalPro</title>
     <link rel="stylesheet" href="../frontend/style.css">
     <style>
-        .car-form {
-            background: #f9f9f9;
-            padding: 20px;
-            margin-bottom: 30px;
-            border-radius: 8px;
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6;
+            margin: 0;
+            padding: 0;
         }
+
+        header {
+            background: #1e3a8a;
+            color: white;
+            padding: 20px;
+        }
+
+        header nav a {
+            color: white;
+            text-decoration: none;
+            margin-right: 20px;
+            font-weight: 500;
+        }
+
+        main {
+            padding: 30px;
+        }
+
+        h1, h2 {
+            color: #1e3a8a;
+        }
+
+        .vehicle-form {
+            background: white;
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            margin-bottom: 30px;
+        }
+
         .form-row {
             margin-bottom: 15px;
         }
+
         .form-row label {
-            display: inline-block;
-            width: 120px;
+            display: block;
+            margin-bottom: 6px;
+            color: #374151;
         }
+
+        .form-row input[type="text"],
+        .form-row input[type="number"] {
+            width: 100%;
+            padding: 8px 12px;
+            border-radius: 8px;
+            border: 1px solid #d1d5db;
+        }
+
+        .form-row input[type="checkbox"] {
+            transform: scale(1.2);
+            margin-left: 5px;
+        }
+
+        .button {
+            background-color: #2563eb;
+            color: white;
+            border: none;
+            padding: 10px 18px;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            text-decoration: none;
+        }
+
+        .button:hover {
+            background-color: #1d4ed8;
+        }
+
+        .button.secondary {
+            background-color: #9ca3af;
+        }
+
+        .button.secondary:hover {
+            background-color: #6b7280;
+        }
+
         table {
             width: 100%;
             border-collapse: collapse;
+            background-color: white;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.05);
         }
+
         th, td {
-            padding: 10px;
-            border: 1px solid #ddd;
+            padding: 12px 16px;
+            border-bottom: 1px solid #e5e7eb;
             text-align: left;
         }
+
         th {
-            background: #f2f2f2;
+            background-color: #f9fafb;
+            color: #374151;
         }
+
+        td {
+            color: #1f2937;
+        }
+
         .actions a {
             margin-right: 10px;
+        }
+
+        @media screen and (max-width: 768px) {
+            .form-row label {
+                width: 100%;
+            }
         }
     </style>
 </head>
 <body>
-    <header>
-        <nav>
-            <a href="../frontend/index.php">View Site</a>
-            <a href="admin_dashboard.php">Dashboard</a>
-            <a href="logout.php">Logout</a>
-        </nav>
-    </header>
 
-    <main>
-        <h1>Manage Cars</h1>
-        
-        <div class="car-form">
-            <h2><?php echo isset($_GET['edit']) ? 'Edit Car' : 'Add New Car'; ?></h2>
-            <form method="post">
-                <?php
-                $car = null;
-                if (isset($_GET['edit'])) {
-                    $id = (int)$_GET['edit'];
-                    $car = $conn->query("SELECT * FROM cars WHERE id = $id")->fetch_assoc();
-                    echo '<input type="hidden" name="car_id" value="'.$id.'">';
-                }
-                ?>
-                <div class="form-row">
-                    <label>Make:</label>
-                    <input type="text" name="make" value="<?php echo $car ? $car['make'] : ''; ?>" required>
-                </div>
-                <div class="form-row">
-                    <label>Model:</label>
-                    <input type="text" name="model" value="<?php echo $car ? $car['model'] : ''; ?>" required>
-                </div>
-                <div class="form-row">
-                    <label>Year:</label>
-                    <input type="number" name="year" min="1900" max="<?php echo date('Y')+1; ?>" 
-                           value="<?php echo $car ? $car['year'] : date('Y'); ?>" required>
-                </div>
-                <div class="form-row">
-                    <label>Price/Day:</label>
-                    <input type="number" step="0.01" name="price" 
-                           value="<?php echo $car ? $car['price_per_day'] : '50.00'; ?>" required>
-                </div>
-                <div class="form-row">
-                    <label>Image:</label>
-                    <input type="text" name="image" value="<?php echo $car ? $car['image'] : 'car-default.jpg'; ?>">
-                </div>
-                <div class="form-row">
-                    <label>Available:</label>
-                    <input type="checkbox" name="available" <?php echo ($car && $car['available']) || !isset($_GET['edit']) ? 'checked' : ''; ?>>
-                </div>
-                <button type="submit" class="button"><?php echo isset($_GET['edit']) ? 'Update' : 'Add'; ?> Car</button>
-                <?php if(isset($_GET['edit'])): ?>
-                    <a href="manage_cars.php" class="button secondary">Cancel</a>
-                <?php endif; ?>
-            </form>
-        </div>
+<header>
+    <h1>Manage Vehicles</h1>
+    <nav>
+        <a href="../frontend/index.php">View Site</a>
+        <a href="admin_dashboard.php">Dashboard</a>
+        <a href="logout.php">Logout</a>
+    </nav>
+</header>
 
-        <h2>Current Cars</h2>
-        <table>
+<main>
+    <div class="vehicle-form">
+        <h2><?php echo isset($_GET['edit']) ? 'Edit Vehicle' : 'Add New Vehicle'; ?></h2>
+        <form method="post">
+            <?php
+            $vehicle = null;
+            if (isset($_GET['edit'])) {
+                $id = (int)$_GET['edit'];
+                $vehicle = $conn->query("SELECT * FROM vehicle WHERE VehicleID = $id")->fetch_assoc();
+                echo '<input type="hidden" name="vehicle_id" value="'.$id.'">';
+            }
+            ?>
+            <div class="form-row">
+                <label>Make:</label>
+                <input type="text" name="make" value="<?php echo $vehicle ? $vehicle['Make'] : ''; ?>" required>
+            </div>
+            <div class="form-row">
+                <label>Model:</label>
+                <input type="text" name="model" value="<?php echo $vehicle ? $vehicle['Model'] : ''; ?>" required>
+            </div>
+            <div class="form-row">
+                <label>Year:</label>
+                <input type="number" name="year" value="<?php echo $vehicle ? $vehicle['Year'] : '2023'; ?>" required>
+            </div>
+            <div class="form-row">
+                <label>Color:</label>
+                <input type="text" name="color" value="<?php echo $vehicle ? $vehicle['Color'] : ''; ?>">
+            </div>
+            <div class="form-row">
+                <label>License Plate:</label>
+                <input type="text" name="license" value="<?php echo $vehicle ? $vehicle['LicensePlate'] : ''; ?>" required>
+            </div>
+            <div class="form-row">
+                <label>Price Per Day:</label>
+                <input type="number" step="0.01" name="price" value="<?php echo $vehicle ? $vehicle['RentalPricePerDay'] : '50.00'; ?>" required>
+            </div>
+            <div class="form-row">
+                <label>Available:
+                    <input type="checkbox" name="availability" <?php echo ($vehicle && $vehicle['AvailabilityStatus']) || !isset($_GET['edit']) ? 'checked' : ''; ?>>
+                </label>
+            </div>
+            <button type="submit" class="button"><?php echo isset($_GET['edit']) ? 'Update' : 'Add'; ?> Vehicle</button>
+            <?php if (isset($_GET['edit'])): ?>
+                <a href="manage_cars.php" class="button secondary">Cancel</a>
+            <?php endif; ?>
+        </form>
+    </div>
+
+    <h2>Current Vehicles</h2>
+    <table>
+        <tr>
+            <th>Make</th>
+            <th>Model</th>
+            <th>Year</th>
+            <th>Color</th>
+            <th>License</th>
+            <th>Price/Day</th>
+            <th>Available</th>
+            <th>Actions</th>
+        </tr>
+        <?php while ($row = $vehicles->fetch_assoc()): ?>
             <tr>
-                <th>Make</th>
-                <th>Model</th>
-                <th>Year</th>
-                <th>Price/Day</th>
-                <th>Available</th>
-                <th>Actions</th>
-            </tr>
-            <?php while($car = $cars->fetch_assoc()): ?>
-            <tr>
-                <td><?php echo $car['make']; ?></td>
-                <td><?php echo $car['model']; ?></td>
-                <td><?php echo $car['year']; ?></td>
-                <td>$<?php echo number_format($car['price_per_day'], 2); ?></td>
-                <td><?php echo $car['available'] ? 'Yes' : 'No'; ?></td>
+                <td><?php echo $row['Make']; ?></td>
+                <td><?php echo $row['Model']; ?></td>
+                <td><?php echo $row['Year']; ?></td>
+                <td><?php echo $row['Color']; ?></td>
+                <td><?php echo $row['LicensePlate']; ?></td>
+                <td>$<?php echo number_format($row['RentalPricePerDay'], 2); ?></td>
+                <td><?php echo $row['AvailabilityStatus'] ? 'Yes' : 'No'; ?></td>
                 <td class="actions">
-                    <a href="manage_cars.php?edit=<?php echo $car['id']; ?>" class="button">Edit</a>
-                    <a href="manage_cars.php?delete=<?php echo $car['id']; ?>" class="button secondary" 
-                       onclick="return confirm('Are you sure?')">Delete</a>
+                    <a href="manage_cars.php?edit=<?php echo $row['VehicleID']; ?>" class="button">Edit</a>
+                    <a href="manage_cars.php?delete=<?php echo $row['VehicleID']; ?>" class="button secondary"
+                       onclick="return confirm('Are you sure you want to delete this vehicle?')">Delete</a>
                 </td>
             </tr>
-            <?php endwhile; ?>
-        </table>
-    </main>
+        <?php endwhile; ?>
+    </table>
+</main>
+
 </body>
 </html>
